@@ -1,13 +1,15 @@
 # Imports
 import os
 import json
+from fastapi import FastAPI # type: ignore
 from dhanhq import marketfeed # type: ignore
 from dotenv import load_dotenv # type: ignore
 
 # Load .env file
 load_dotenv()
-DHAN_CLIENT_CODE=db_host = os.environ.get("DHAN_CLIENT_CODE")
-DHAN_AUTH_TOKEN=db_host = os.environ.get("DHAN_AUTH_TOKEN")
+DHAN_CLIENT_CODE=os.environ.get("DHAN_CLIENT_CODE")
+DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
+CODE_VERSION=os.environ.get("CODE_VERSION")
 
 async def on_connect(instance):
     print("Connected to websocket")
@@ -31,4 +33,9 @@ feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE,
     on_connect=on_connect,
     on_message=on_message)
 
-feed.run_forever()
+app = FastAPI()
+
+@app.get('/init')
+def init():
+    feed.run_forever()
+    return {'code_version': CODE_VERSION}
