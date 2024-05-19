@@ -8,6 +8,8 @@ pip3 install dhanhq
 pip3 install websockets
 pip3 install python-dotenv
 pip3 install fastapi uvicorn
+pip3 install pandas
+pip3 install openpyxl
 ```
 
 ## Run project
