@@ -1,9 +1,12 @@
 # Imports
 import os
 import json
+from prediction import PredictionService
 from fastapi import FastAPI # type: ignore
 from dhanhq import marketfeed # type: ignore
 from dotenv import load_dotenv # type: ignore
+
+predictionService = PredictionService()
 
 # Load .env file
 load_dotenv()
@@ -23,19 +26,13 @@ async def on_message(instance, message):
         security_id = message['security_id']
         if str(security_id) not in cached_data:
             cached_data[str(security_id)] = {"open_price": 0, "risk": 100}
-
-        # Default assign -> Target data
         target_data = cached_data[str(security_id)]
         if (target_data['open_price'] == 0 and message['type'] == 'Previous Close'):
             target_data['open_price'] = float(message['prev_close'])
 
-        if (message['type'] == 'Ticker Data' and message['LTP'] is not None):
-            current_price = float(message['LTP'])
-            print(current_price)
-            # file = open(file_path, "a")
-            # json_data = json.dumps(message)
-            # file.write(json_data + "\n")
-            # file.close()
+        canBuy = predictionService.canBuy(message=message, targetData=target_data)
+        print(canBuy)
+
     except Exception as e:
         print('ERROR')
         print(e)
