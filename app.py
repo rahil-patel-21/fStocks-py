@@ -1,50 +1,14 @@
 # Imports
 import os
-import json
-from prediction import PredictionService
-from fastapi import FastAPI # type: ignore
-from dhanhq import marketfeed # type: ignore
+from dhan import *
 from dotenv import load_dotenv # type: ignore
 
-predictionService = PredictionService()
 
 # Load .env file
 load_dotenv()
-DHAN_CLIENT_CODE=os.environ.get("DHAN_CLIENT_CODE")
-DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
 CODE_VERSION=os.environ.get("CODE_VERSION")
 
-async def on_connect(instance):
-    print("Connected to websocket")
-
-file_path = "store/nifty_50.txt"
-
-cached_data = {}
-async def on_message(instance, message):
-    try:
-        # Default assign -> Cached data
-        security_id = message['security_id']
-        if str(security_id) not in cached_data:
-            cached_data[str(security_id)] = {"open_price": 0, "risk": 100}
-        target_data = cached_data[str(security_id)]
-        if (target_data['open_price'] == 0 and message['type'] == 'Previous Close'):
-            target_data['open_price'] = float(message['prev_close'])
-
-        canBuy = predictionService.canBuy(message=message, targetData=target_data)
-        print(canBuy)
-
-    except Exception as e:
-        print('ERROR')
-        print(e)
-
-instruments = [(1,"2031"),(1,"11532")]
-feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE,
-    DHAN_AUTH_TOKEN,
-    instruments,
-    marketfeed.Ticker,
-    on_connect=on_connect,
-    on_message=on_message)
-feed.run_forever()
+init("NIFTY_COMPANIES")
 
 # app = FastAPI()
 
