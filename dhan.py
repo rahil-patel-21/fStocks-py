@@ -20,6 +20,7 @@ def init(type):
     if (type == 'NIFTY_COMPANIES'):
         instruments = getNiftyCompanies()
     else: instruments = [(1,"2031"),(1,"11532")]
+    print(instruments)
 
     feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Ticker, on_connect=on_connect, on_message=on_message)
     feed.run_forever()
@@ -29,6 +30,7 @@ async def on_connect(instance):
 
 async def on_message(instance, message):
     try:
+        print(message)
         # Default assign -> Cached data
         security_id = message['security_id']
         if str(security_id) not in cached_data:
