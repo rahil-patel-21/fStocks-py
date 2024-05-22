@@ -4,6 +4,7 @@ import json
 import datetime
 from dhanhq import marketfeed # type: ignore
 from dotenv import load_dotenv # type: ignore
+from prediction import isBullish # type: ignore
 
 # Load .env file
 load_dotenv()
@@ -29,6 +30,7 @@ async def on_connect(instance):
 
 async def on_message(instance, message):
     try:
+        # print(message)
         # Default assign -> Cached data
         security_id = message['security_id']
         if str(security_id) not in cached_data:
@@ -47,7 +49,7 @@ async def on_message(instance, message):
             return# Checking only for every 5th second
             
         # Read existing data from the file if it exists
-        file_path = f"store/nifty_50_{message['security_id']}_{current_date}" 
+        file_path = f"store/ticker_data/nifty_50_{message['security_id']}_{current_date}" 
         if os.path.exists(file_path):
             with open(file_path, 'r') as file:
                 try:
@@ -58,6 +60,8 @@ async def on_message(instance, message):
         existing_data.append(message)
         with open(file_path, 'w') as file:
             json.dump(existing_data, file, indent=4)
+
+        isBullish(file_path)
 
     except Exception as e:
         print('ERROR')
