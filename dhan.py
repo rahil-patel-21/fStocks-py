@@ -4,6 +4,7 @@ import json
 import datetime
 from dhanhq import marketfeed # type: ignore
 from dotenv import load_dotenv # type: ignore
+from prediction import isBullish # type: ignore
 
 # Load .env file
 load_dotenv()
@@ -59,6 +60,8 @@ async def on_message(instance, message):
         existing_data.append(message)
         with open(file_path, 'w') as file:
             json.dump(existing_data, file, indent=4)
+
+        isBullish(file_path)
 
     except Exception as e:
         print('ERROR')
