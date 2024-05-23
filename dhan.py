@@ -61,7 +61,8 @@ async def on_message(instance, message):
         with open(file_path, 'w') as file:
             json.dump(existing_data, file, indent=4)
 
-        isBullish(file_path)
+        result = isBullish(file_path)
+        print(result)
 
     except Exception as e:
         print('ERROR')
