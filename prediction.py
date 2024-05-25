@@ -50,7 +50,7 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
                     # Check current position
                     if (index == len(data) - 1):
                         openDiff = (value * 100 / openValue) - 100
-                        if (openDiff >= 0.25 and openDiff < 5): # Positive movement
+                        if (openDiff >= 0.15 and openDiff < 1.5): # Positive movement
                             downDiff = (minValue * 100 / openValue) - 100
                             if (downDiff >= -0.75): # Today no negative movement in past
                                 upDiff = (maxValue * 100 / openValue) - 100
