@@ -1,8 +1,10 @@
 # Imports
 import os
-from dhan import *
-from database import init_database, injectQuery
+from dhan import init
+from datetime import datetime
+from pytz import timezone # type: ignore
 from dotenv import load_dotenv # type: ignore
+from database import init_database, injectQuery
 
 
 # Load .env file
@@ -11,13 +13,12 @@ CODE_VERSION=os.environ.get("CODE_VERSION")
 
 init_database()
 
-injectQuery('SELECT * FROM "LiveData" LIMIT 5')
+now = datetime.now(timezone('UTC'))
+injectQuery(f'''
+INSERT INTO
+    "Transactions" ("security_id", "type", "quantity", "initiated_at", "completed_at", "unique_id")
+VALUES
+  ('1','1','1', '{now}', '{now}', '2');
+            ''')
 
 init("NIFTY_COMPANIES")
-
-# app = FastAPI()
-
-# @app.get('/init')
-# def init():
-#     feed.run_forever()
-#     return {'code_version': CODE_VERSION}
