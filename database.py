@@ -29,22 +29,18 @@ def init_database():
         print(f"An error occurred: {e}")
 
 def injectQuery(query: str):
-    try:
-        # Get a connection from the pool
-        connection = connection_pool.getconn()
+    # Get a connection from the pool
+    connection = connection_pool.getconn()
 
-        cursor = connection.cursor()
-        cursor.execute(query)
-        if 'SELECT' in query:
-            rows = cursor.fetchall()
-        connection.commit()
-        cursor.close()
-        connection_pool.putconn(connection)
+    cursor = connection.cursor()
+    cursor.execute(query)
+    if 'SELECT' in query:
+        rows = cursor.fetchall()
+    connection.commit()
+    cursor.close()
+    connection_pool.putconn(connection)
         
-        if 'SELECT' in query:
-            for row in rows:
-                print(row)
+    if 'SELECT' in query:
+        return rows
 
-    except Exception as e:
-        print('Error while injecting the query')
-        print(e)
+init_database()

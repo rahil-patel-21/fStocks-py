@@ -2,9 +2,9 @@
 import os
 import json
 import datetime
-from dhanhq import marketfeed # type: ignore
 from dotenv import load_dotenv # type: ignore
 from prediction import isBullish # type: ignore
+from dhanhq import dhanhq, marketfeed # type: ignore
 
 # Load .env file
 load_dotenv()
@@ -15,6 +15,7 @@ DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
 cached_data = {}
 current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
+dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
 def init(type):
     instruments = []

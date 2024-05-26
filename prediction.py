@@ -1,6 +1,7 @@
 # Imports
 import json
 import datetime
+from transaction import buy_stock
 
 class PredictionService:
 
@@ -19,7 +20,6 @@ class PredictionService:
             open_price = targetData['open_price'] or 3000
             open_diff = (current_price * 100 / open_price) - 100
             if (open_diff <= 0): return False# Continue only if bullish movement
-            print(open_diff)
 
             return False
 
@@ -33,6 +33,8 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
     result = False
 
     isLevel1Clear = False
+    targetSecurityId = None
+    currentPrice = None
     # Open and read the JSON file
     with open(filePath, 'r') as file:
         data = json.load(file) # Parse JSON data into a Python object
@@ -55,6 +57,8 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
                             if (downDiff >= -0.75): # Today no negative movement in past
                                 upDiff = (maxValue * 100 / openValue) - 100
                                 if (upDiff < 5): # Today no too high movement in past
+                                    targetSecurityId = el['security_id']
+                                    currentPrice = value
                                     isLevel1Clear = True
  
     # Check for level 2
@@ -90,7 +94,7 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
         stable_ratio = stable_count * 100 / total_count
         up_ratio = up_count * 100 / total_count
         low_ratio = low_count * 100 / total_count
-        print({"stable_ratio": stable_ratio, "up_ratio": up_ratio, "low_ratio": low_ratio})
+
         if (low_ratio >= up_ratio or low_ratio >= 40): # Downward movement in last 5 mins
             return False
         if (stable_ratio >= 33): # Stable movement, Scalping unpredictable
@@ -99,7 +103,6 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
             isLevel2Clear = True
         else: return False # Unpredictable    
 
-        print({"isLevel2Clear": isLevel2Clear})
         if (isLevel2Clear == True):
             five_min_diff = last_el_of_five_min * 100 / first_el_of_five_min - 100
             if (five_min_diff <= 0.1): # No up movement for scalping
@@ -110,6 +113,7 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
                 filename = f'store/prediction/data_{timestamp}.json'
                 with open(filename, 'w') as file:
                     json.dump(data, file, indent=4)
+                buy_stock(targetSecurityId, currentPrice) # Buy stock
                 return True # Too good time to buy the stock
 
     return result
