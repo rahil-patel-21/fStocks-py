@@ -10,6 +10,7 @@ pip3 install python-dotenv
 pip3 install fastapi uvicorn
 pip3 install pandas
 pip3 install openpyxl
+pip3 install psycopg2-binary
 ```
 
 ## Run project
