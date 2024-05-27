@@ -25,6 +25,7 @@ def buy_stock(securityId, currentPrice):
         currentBalance = getCurrentBalance()
         totalQuantity = math.floor(currentBalance / currentPrice) - 1
         if (totalQuantity <= 2): return {"valid": False, "message": "There is an issue with the quantity"}
+        elif (currentBalance < 2500): return {"valid": False, "message": "Insufficient wallet balance"}
         
         uniqueId  = f"{current_date}-{securityId}"
         injectQuery(f'''INSERT INTO
