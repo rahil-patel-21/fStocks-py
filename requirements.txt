@@ -1,0 +1,9 @@
+dhanhq
+
+openpyxl
+
+pandas
+psycopg2-binary
+python-dotenv
+
+websockets

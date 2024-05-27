@@ -15,7 +15,6 @@ DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
 cached_data = {}
 current_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
-
 def init(type):
     instruments = []
     if (type == 'NIFTY_COMPANIES'):
@@ -24,6 +23,7 @@ def init(type):
 
     feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Ticker, on_connect=on_connect, on_message=on_message)
     feed.run_forever()
+    print('INIT RUNNING SUCCESSFULLY !')
 
 async def on_connect(instance):
     print("Connected to websocket")
