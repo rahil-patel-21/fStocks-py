@@ -31,7 +31,7 @@ async def on_connect(instance):
 
 async def on_message(instance, message):
     try:
-        # print(message)
+        #print(message)
         # Default assign -> Cached data
         security_id = message['security_id']
         if str(security_id) not in cached_data:

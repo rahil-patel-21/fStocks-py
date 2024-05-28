@@ -40,7 +40,7 @@ def buy_stock(securityId, currentPrice):
         order_type=dhanClient.MARKET,
         validity='DAY',
         security_id=f"{securityId}",
-        quantity=1,
+        quantity=totalQuantity,
         disclosed_quantity=0,
         price=0,
         trigger_price=0,
