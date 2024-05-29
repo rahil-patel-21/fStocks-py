@@ -21,7 +21,9 @@ def init(type):
     instruments = []
     if (type == 'NIFTY_COMPANIES'):
         instruments = getNiftyCompanies()
-    else: instruments = [(1,"2031"),(1,"11532")]
+    elif (type == 'NIFTY_INDEX'):
+        instruments = getNiftyIndexes()
+    else: instruments = []
 
     feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Ticker, on_connect=on_connect, on_message=on_message)
     feed.run_forever()
@@ -31,7 +33,7 @@ async def on_connect(instance):
 
 async def on_message(instance, message):
     try:
-        #print(message)
+        print(message)
         # Default assign -> Cached data
         security_id = message['security_id']
         if str(security_id) not in cached_data:
@@ -71,6 +73,16 @@ async def on_message(instance, message):
 def getNiftyCompanies():
     finalizedList = []
     with open('store/nifty_companies.json', 'r') as file:
+        companyData = json.load(file)
+        for key in companyData:
+            value = companyData[key]
+            finalizedList.append((value['segment'],key))
+
+    return finalizedList
+
+def getNiftyIndexes():
+    finalizedList = []
+    with open('store/nifty_index.json', 'r') as file:
         companyData = json.load(file)
         for key in companyData:
             value = companyData[key]
