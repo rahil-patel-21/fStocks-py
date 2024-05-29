@@ -54,7 +54,7 @@ def isBullish(filePath): # For large cap of 50 companies of nifty
                         openDiff = (value * 100 / openValue) - 100
                         if (openDiff >= 0.15 and openDiff < 1.5): # Positive movement
                             downDiff = (minValue * 100 / openValue) - 100
-                            if (downDiff >= -0.15): # Today no negative movement in past
+                            if (downDiff >= -0.025): # Today no negative movement in past
                                 upDiff = (maxValue * 100 / openValue) - 100
                                 if (upDiff < 5): # Today no too high movement in past
                                     targetSecurityId = el['security_id']
