@@ -25,6 +25,96 @@ class PredictionService:
 
         else: return False
 
+def isIndexBullish(filePath):
+    openValue = None
+    maxValue = 0
+    minValue = 1000000000000
+    result = False
+
+    isLevel1Clear = False
+    targetSecurityId = None
+    currentPrice = None
+
+    # Open and read the JSON file
+    with open(filePath, 'r') as file:
+        data = json.load(file) # Parse JSON data into a Python object
+        for index, el in enumerate(data):
+            if 'type' in el and 'LTP' in el:
+                if el['type'] == 'Ticker Data':
+                    value = float(el['LTP'])
+                    # Assign values as per current value
+                    if (value > maxValue): maxValue = value
+                    if (value < minValue): minValue = value
+                    if (index == 0):
+                        openValue = value
+                        continue
+
+                    # Check current position
+                    if (index == len(data) - 1):
+                        openDiff = (value * 100 / openValue) - 100
+                        if (openDiff >= 2.5 and openDiff < 200): # Positive movement
+                            downDiff = (minValue * 100 / openValue) - 100
+                            if (downDiff >= -2.5): # Today no negative movement in past
+                                upDiff = (maxValue * 100 / openValue) - 100
+                                if (upDiff < 200): # Today no too high movement in past
+                                    targetSecurityId = el['security_id']
+                                    currentPrice = value
+                                    isLevel1Clear = True
+  
+    # Check for level 2
+    if isLevel1Clear == True:
+        isLevel2Clear = False
+        last_five_mins_list = filter_last_5_minutes(data, data[len(data) - 1])
+        if len(last_five_mins_list) > 60 or len(last_five_mins_list) < 25:
+            return False
+        
+        stable_count = 0
+        up_count = 0
+        low_count = 0
+        first_el_of_five_min = None
+        last_el_of_five_min = None
+        for index, el in enumerate(last_five_mins_list):
+            if 'type' in el and 'LTP' in el:
+                if el['type'] == 'Ticker Data':
+                    value = float(el['LTP'])
+                    if (index == 0): 
+                        first_el_of_five_min = value 
+                        continue
+                    elif index == len(last_five_mins_list) - 1:
+                        last_el_of_five_min = value
+
+                    prev_el = last_five_mins_list[index - 1]
+                    prev_value = float(prev_el['LTP'])
+                    if (value == prev_value): stable_count = stable_count + 1 # Stable position
+                    if (value > prev_value): up_count = up_count + 1 # Up position
+                    if (value < prev_value): low_count = low_count + 1 # Lower position
+
+        # Concluding level 2
+        total_count = len(last_five_mins_list)
+        stable_ratio = stable_count * 100 / total_count
+        up_ratio = up_count * 100 / total_count
+        low_ratio = low_count * 100 / total_count
+        if (low_ratio >= up_ratio or low_ratio >= 50): # Downward movement in last 5 mins
+            return False
+        if (stable_ratio >= 20): # Stable movement, Scalping unpredictable
+            return False
+        if (up_ratio >= 50): # Too good time to buy the stock
+            isLevel2Clear = True
+        else: return False # Unpredictable   
+
+        if (isLevel2Clear == True):
+            five_min_diff = last_el_of_five_min * 100 / first_el_of_five_min - 100
+            print(five_min_diff)
+            if (five_min_diff <= 5): # No up movement for scalping
+                return False;
+            # Save data to check prediction later on 
+            else: 
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                filename = f'store/prediction/data_{timestamp}.json'
+                with open(filename, 'w') as file:
+                    json.dump(data, file, indent=4)
+                # buy_stock(targetSecurityId, currentPrice) # Buy stock
+                return True # Too good time to buy the stock
 
 def isBullish(filePath): # For large cap of 50 companies of nifty
     openValue = None
