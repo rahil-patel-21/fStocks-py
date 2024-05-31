@@ -4,7 +4,7 @@ import json
 import datetime
 from datetime import datetime, timedelta
 from dotenv import load_dotenv # type: ignore
-from prediction import isBullish # type: ignore
+from prediction import isBullish, isIndexBullish # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
 
 # Load .env file
@@ -34,7 +34,6 @@ async def on_connect(instance):
 
 async def on_message(instance, message):
     try:
-        # print(message)
         # Default assign -> Cached data
         security_id = message['security_id']
         if str(security_id) not in cached_data:
@@ -67,6 +66,7 @@ async def on_message(instance, message):
             json.dump(existing_data, file, indent=4)
 
         # isBullish(file_path)
+        isIndexBullish(file_path)
 
     except Exception as e:
         print('ERROR')
