@@ -73,10 +73,13 @@ def isIndexBullish(filePath):
         low_count = 0
         first_el_of_five_min = None
         last_el_of_five_min = None
+        max_value_of_five_min = -100000
         for index, el in enumerate(last_five_mins_list):
             if 'type' in el and 'LTP' in el:
                 if el['type'] == 'Ticker Data':
                     value = float(el['LTP'])
+                    if value > max_value_of_five_min:
+                        max_value_of_five_min = value
                     if (index == 0): 
                         first_el_of_five_min = value 
                         continue
@@ -94,6 +97,7 @@ def isIndexBullish(filePath):
         stable_ratio = stable_count * 100 / total_count
         up_ratio = up_count * 100 / total_count
         low_ratio = low_count * 100 / total_count
+
         if (low_ratio >= up_ratio or low_ratio >= 50): # Downward movement in last 5 mins
             return False
         if (stable_ratio >= 20): # Stable movement, Scalping unpredictable
@@ -104,8 +108,8 @@ def isIndexBullish(filePath):
 
         if (isLevel2Clear == True):
             five_min_diff = last_el_of_five_min * 100 / first_el_of_five_min - 100
-            print(five_min_diff)
-            if (five_min_diff <= 5): # No up movement for scalping
+            max_to_current_ratio = last_el_of_five_min * 100 / max_value_of_five_min - 100
+            if (five_min_diff <= 5 or max_to_current_ratio <= 0): # No up movement for scalping
                 return False;
             # Save data to check prediction later on 
             else: 
