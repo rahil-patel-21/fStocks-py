@@ -26,15 +26,16 @@ def init(type):
         instruments = getNiftyIndexes()
     else: instruments = []
 
-    feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Ticker, on_connect=on_connect, on_message=on_message)
+    # Ticker - Ticker Data | Quote - Quote Data | Depth - Market Depth
+    feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Quote, on_connect=on_connect, on_message=on_message)
     feed.run_forever()
 
-async def on_connect(instance):
+async def on_connect(_):
     print("Connected to websocket")
 
-async def on_message(instance, message):
+async def on_message(_, message):
     try:
-        # print(message)
+        print(message)
         # Default assign -> Cached data
         security_id = message['security_id']
         if str(security_id) not in cached_data:
@@ -45,7 +46,9 @@ async def on_message(instance, message):
             target_data['open_price'] = float(message['prev_close'])
 
         if 'LTT' not in message:
-            return
+            if message['type'] == 'OI Data':
+                message['LTT'] = datetime.now().strftime("%H:%M:%S")
+            else: return
         if 'last_sync_time' not in cached_data[str(security_id)]:
             cached_data[str(security_id)]['last_sync_time'] = '09:15:00'
         diff_in_seconds = time_difference_in_seconds(cached_data[str(security_id)]['last_sync_time'], message['LTT'])
@@ -54,7 +57,13 @@ async def on_message(instance, message):
         cached_data[str(security_id)]['last_sync_time'] = message['LTT']
             
         # Read existing data from the file if it exists
-        file_path = f"store/ticker_data/nifty_50_{message['security_id']}_{current_date}" 
+        file_path = None
+        if message['type'] == 'Quote Data':
+            file_path = f"store/quote_data/{current_date}_{message['security_id']}" 
+        elif message['type'] == 'OI Data':
+            file_path = f"store/oi_data/{current_date}_{message['security_id']}" 
+        else: file_path = f"store/ticker_data/nifty_50_{message['security_id']}_{current_date}" 
+
         if os.path.exists(file_path):
             with open(file_path, 'r') as file:
                 try:
