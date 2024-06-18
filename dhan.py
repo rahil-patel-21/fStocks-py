@@ -1,11 +1,14 @@
 # Imports
 import os
+import re
 import json
 import datetime
-from datetime import datetime, timedelta
+from datetime import datetime
+import requests # type: ignore
 from dotenv import load_dotenv # type: ignore
-from prediction import isBullish, isIndexBullish # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
+from prediction import isBullish, isIndexBullish # type: ignore
+from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
 
 # Load .env file
 load_dotenv()
@@ -25,6 +28,7 @@ def init(type):
     elif (type == 'NIFTY_INDEX'):
         instruments = getNiftyIndexes()
     else: instruments = []
+    print(instruments)
 
     # Ticker - Ticker Data | Quote - Quote Data | Depth - Market Depth
     feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Quote, on_connect=on_connect, on_message=on_message)
@@ -76,7 +80,8 @@ async def on_message(_, message):
             json.dump(existing_data, file, indent=4)
 
         # isBullish(file_path)
-        isIndexBullish(file_path)
+        result = isIndexBullish(file_path)
+        print(result)
 
     except Exception as e:
         print('ERROR')
@@ -117,3 +122,86 @@ def time_difference_in_seconds(time1_str, time2_str):
     difference_in_seconds = time_difference.total_seconds()
     
     return difference_in_seconds
+
+def syncSecurityIds():
+    file_path = 'store/finalized_dhan_ids.xlsx'
+    list = xlsx_to_list_of_dicts(file_path)
+
+    target_dict = {}
+    raw_list = []
+    for el in list:
+        try:
+            if 'SEM_EXM_EXCH_ID' not in el: continue
+            if (el['SEM_EXM_EXCH_ID'] != 'NSE'): continue
+            if 'SEM_SMST_SECURITY_ID' not in el: continue
+            if 'SEM_TRADING_SYMBOL' not in el: continue
+
+            secId = el['SEM_SMST_SECURITY_ID']
+            symbol = el['SEM_TRADING_SYMBOL']
+        
+            url = os.environ.get("DHAN_STOCK_DETAILS_URL")
+            data = { "Data": { "Seg": 1, "Secid": secId } }
+            response = requests.post(url, json=data)
+            responseData = response.json()
+            if 'data' not in responseData: continue
+            if 'Ltp' not in responseData['data']: continue
+            current_price = responseData['data']['Ltp']
+            if (current_price < 50 or current_price > 10000): continue
+            if (responseData['data']['vol_t_td'] < 100000): continue
+            raw_list.append(el)
+
+            symbol_name = el['SM_SYMBOL_NAME'].lower().replace('limited', 'ltd').replace('&', 'and')
+            symbol_name = re.sub(r'\s+', '-', symbol_name) 
+            IND_MONEY_BASE_URL=os.environ.get("IND_MONEY_API_BASE_URL")
+            indMoneyUrl = f"${IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
+            params = { "catalog-required": "true", "params": "true", "response_format": "json" }
+            indResponse = requests.get(indMoneyUrl, params=params)
+            indResponseData = indResponse.json()
+            # Unsuccessful response
+            if 'success' not in indResponseData:
+                if 'debug_info' in  indResponseData:
+                    # Name is different on Dhan and IndMoney
+                    if indResponseData['debug_info'] == 'record_not_found':
+                        indMoneyUrl = f"${IND_MONEY_BASE_URL}global-search/public/v2/global-search/"
+                        params = { "platform": "web", "query": symbol, "filter": "IN_STOCKS", "offset": 0 }
+                        indResponse = requests.get(indMoneyUrl, params=params)
+                        indResponseData = indResponse.json()
+                        searchResults = indResponseData['data']['search_results']['data'][1]['data'][0]
+                        symbol_name = searchResults['title1']['text']
+                        symbol_name = symbol_name.lower().replace('limited', 'ltd').replace('&', 'and')
+                        symbol_name = re.sub(r'\s+', '-', symbol_name) 
+                        indMoneyUrl = f"${IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
+                        params = { "catalog-required": "true", "params": "true", "response_format": "json" }
+                        indResponse = requests.get(indMoneyUrl, params=params)
+                        indResponseData = indResponse.json()
+                    else: continue
+                else: continue
+            if indResponseData['success'] != True: continue
+            if 'catalog' not in indResponseData: continue
+            if 'entity_stats' not in indResponseData['catalog']: continue
+            if 'performance' not in indResponseData['catalog']['entity_stats']: continue
+            stockReturns = indResponseData['catalog']['entity_stats']['performance']['returns']
+            has_negative_value = any(item['value'] < 0 for item in stockReturns)
+            if has_negative_value: continue
+
+            indMoneyUrl = f"${IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
+            indResponse = requests.get(indMoneyUrl)
+            indResponseData = indResponse.json()
+            json_string = json.dumps(indResponseData)
+            market_cap = None
+            if 'marketCap=SMALL' in json_string:
+                market_cap='SMALL'
+            elif 'marketCap=MID' in json_string:
+                market_cap='MID'
+            elif 'marketCap=LARGE' in json_string:
+                market_cap='LARGE'
+            value = { "price": responseData['data']['Ltp'], "market_cap": market_cap, "name": el['SM_SYMBOL_NAME'], "returns": stockReturns, "volume": responseData['data']['vol_t_td'] }
+            target_dict[secId] = value
+            appendToDictList('store/dhan_security_ids.json',value)
+            print(len(target_dict))
+
+        except Exception as e:
+            print(e)
+    # list_of_dicts_to_xlsx('store/finalized_dhan_ids.xlsx', raw_list)
+
+syncSecurityIds()

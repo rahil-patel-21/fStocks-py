@@ -241,4 +241,4 @@ def filter_last_5_minutes(data, targetData):
 
     return [item for item in data if is_within_last_5_minutes(item)]
 
-isIndexBullish("test")
+# isIndexBullish("test")
