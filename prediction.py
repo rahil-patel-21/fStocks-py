@@ -38,9 +38,11 @@ def isIndexBullish(filePath):
     # Open and read the JSON file
     with open(filePath, 'r') as file:
         data = json.load(file) # Parse JSON data into a Python object
-        for index, el in enumerate(data):
+
+        filtered_data = [entry for entry in data if entry.get("LTT") != "00:00:00"]
+        for index, el in enumerate(filtered_data):
             if 'type' in el and 'LTP' in el:
-                if el['type'] == 'Ticker Data':
+                if el['type'] == 'Ticker Data' or el['type'] == 'Quote Data':
                     value = float(el['LTP'])
                     # Assign values as per current value
                     if (value > maxValue): maxValue = value
@@ -50,12 +52,15 @@ def isIndexBullish(filePath):
                         continue
 
                     # Check current position
-                    if (index == len(data) - 1):
+                    if (index == len(filtered_data) - 1):
                         openDiff = (value * 100 / openValue) - 100
-                        if (openDiff >= 2.5 and openDiff < 200): # Positive movement
+                        print({"openDiff": openDiff})
+                        if (openDiff >= 5 and openDiff < 200): # Positive movement
                             downDiff = (minValue * 100 / openValue) - 100
-                            if (downDiff >= -2.5): # Today no negative movement in past
+                            print({"downDiff": downDiff})
+                            if (downDiff >= -10): # Today no big negative movement in past
                                 upDiff = (maxValue * 100 / openValue) - 100
+                                print({"upDiff": upDiff})
                                 if (upDiff < 200): # Today no too high movement in past
                                     targetSecurityId = el['security_id']
                                     currentPrice = value
@@ -64,8 +69,8 @@ def isIndexBullish(filePath):
     # Check for level 2
     if isLevel1Clear == True:
         isLevel2Clear = False
-        last_five_mins_list = filter_last_5_minutes(data, data[len(data) - 1])
-        if len(last_five_mins_list) > 60 or len(last_five_mins_list) < 25:
+        last_five_mins_list = filter_last_5_minutes(filtered_data, filtered_data[len(filtered_data) - 1])
+        if len(last_five_mins_list) > 60 or len(last_five_mins_list) <= 20:
             return False
         
         stable_count = 0
@@ -73,15 +78,21 @@ def isIndexBullish(filePath):
         low_count = 0
         first_el_of_five_min = None
         last_el_of_five_min = None
+        max_value_of_five_min = -100000
+        mediate_max_value = -10000
         for index, el in enumerate(last_five_mins_list):
             if 'type' in el and 'LTP' in el:
-                if el['type'] == 'Ticker Data':
+                if el['type'] == 'Ticker Data' or el['type'] == 'Quote Data':
                     value = float(el['LTP'])
+                    if value > max_value_of_five_min:
+                        max_value_of_five_min = value
                     if (index == 0): 
                         first_el_of_five_min = value 
                         continue
                     elif index == len(last_five_mins_list) - 1:
                         last_el_of_five_min = value
+                    elif value > mediate_max_value:
+                        mediate_max_value = value
 
                     prev_el = last_five_mins_list[index - 1]
                     prev_value = float(prev_el['LTP'])
@@ -94,7 +105,9 @@ def isIndexBullish(filePath):
         stable_ratio = stable_count * 100 / total_count
         up_ratio = up_count * 100 / total_count
         low_ratio = low_count * 100 / total_count
-        if (low_ratio >= up_ratio or low_ratio >= 50): # Downward movement in last 5 mins
+        print({"stable_ratio": stable_ratio, "up_ratio": up_ratio, "low_ratio": low_ratio})
+
+        if (low_ratio >= up_ratio or low_ratio >= 49): # Downward movement in last 5 mins
             return False
         if (stable_ratio >= 20): # Stable movement, Scalping unpredictable
             return False
@@ -104,15 +117,22 @@ def isIndexBullish(filePath):
 
         if (isLevel2Clear == True):
             five_min_diff = last_el_of_five_min * 100 / first_el_of_five_min - 100
-            print(five_min_diff)
-            if (five_min_diff <= 5): # No up movement for scalping
+            print({"last_el_of_five_min": last_el_of_five_min, "first_el_of_five_min": first_el_of_five_min})
+            first_to_current_ratio = (last_el_of_five_min * 100 / first_el_of_five_min) - 100
+            print({'first_to_current_ratio': first_to_current_ratio})
+            mediate_to_current_ratio = (last_el_of_five_min * 100 / mediate_max_value) - 100
+            print({"mediate_to_current_ratio": mediate_to_current_ratio})
+            print({"five_min_diff": five_min_diff})
+            if (five_min_diff <= 0.5 or first_to_current_ratio <= 0.15): # No up movement for scalping
+                return False;
+            elif (mediate_to_current_ratio <= 0): # No up movement for scalping
                 return False;
             # Save data to check prediction later on 
             else: 
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
                 filename = f'store/prediction/data_{timestamp}.json'
                 with open(filename, 'w') as file:
-                    json.dump(data, file, indent=4)
+                    json.dump(filtered_data, file, indent=4)
                 # buy_stock(targetSecurityId, currentPrice) # Buy stock
                 return True # Too good time to buy the stock
 
@@ -220,3 +240,5 @@ def filter_last_5_minutes(data, targetData):
         return five_minutes_ago <= ltt_time <= target_time
 
     return [item for item in data if is_within_last_5_minutes(item)]
+
+# isIndexBullish("test")
