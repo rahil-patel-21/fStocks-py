@@ -1,4 +1,4 @@
 # Imports
 from dhan import init
 
-init("NIFTY_INDEX") # NIFTY_COMPANIES | NIFTY_INDEX
+init("SMALL_CAP") # NIFTY_COMPANIES | NIFTY_INDEX | SMALL_CAP

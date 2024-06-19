@@ -27,6 +27,8 @@ def init(type):
         instruments = getNiftyCompanies()
     elif (type == 'NIFTY_INDEX'):
         instruments = getNiftyIndexes()
+    elif (type == 'SMALL_CAP'):
+        instruments = getSmallCapCompanies()
     else: instruments = []
     print(instruments)
 
@@ -107,6 +109,17 @@ def getNiftyIndexes():
 
     return finalizedList
 
+def getSmallCapCompanies():
+    finalizedList = []
+    with open('store/dhan_security_ids.json', 'r') as file:
+        companyList = json.load(file)
+        for el in companyList:
+            if (el['market_cap'] != 'MID'): continue
+            if (len(finalizedList) >= 100): continue
+            finalizedList.append((1,str(el['Secid'])))
+
+    return finalizedList
+
 def time_difference_in_seconds(time1_str, time2_str):
     # Define the time format
     time_format = "%H:%M:%S"
@@ -153,7 +166,7 @@ def syncSecurityIds():
             symbol_name = el['SM_SYMBOL_NAME'].lower().replace('limited', 'ltd').replace('&', 'and')
             symbol_name = re.sub(r'\s+', '-', symbol_name) 
             IND_MONEY_BASE_URL=os.environ.get("IND_MONEY_API_BASE_URL")
-            indMoneyUrl = f"${IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
+            indMoneyUrl = f"{IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
             params = { "catalog-required": "true", "params": "true", "response_format": "json" }
             indResponse = requests.get(indMoneyUrl, params=params)
             indResponseData = indResponse.json()
@@ -162,7 +175,7 @@ def syncSecurityIds():
                 if 'debug_info' in  indResponseData:
                     # Name is different on Dhan and IndMoney
                     if indResponseData['debug_info'] == 'record_not_found':
-                        indMoneyUrl = f"${IND_MONEY_BASE_URL}global-search/public/v2/global-search/"
+                        indMoneyUrl = os.environ.get('IND_MONEY_SEARCH_API')
                         params = { "platform": "web", "query": symbol, "filter": "IN_STOCKS", "offset": 0 }
                         indResponse = requests.get(indMoneyUrl, params=params)
                         indResponseData = indResponse.json()
@@ -170,7 +183,7 @@ def syncSecurityIds():
                         symbol_name = searchResults['title1']['text']
                         symbol_name = symbol_name.lower().replace('limited', 'ltd').replace('&', 'and')
                         symbol_name = re.sub(r'\s+', '-', symbol_name) 
-                        indMoneyUrl = f"${IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
+                        indMoneyUrl = f"{IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
                         params = { "catalog-required": "true", "params": "true", "response_format": "json" }
                         indResponse = requests.get(indMoneyUrl, params=params)
                         indResponseData = indResponse.json()
@@ -184,7 +197,7 @@ def syncSecurityIds():
             has_negative_value = any(item['value'] < 0 for item in stockReturns)
             if has_negative_value: continue
 
-            indMoneyUrl = f"${IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
+            indMoneyUrl = f"{IND_MONEY_BASE_URL}indian-stock-broker/catalog/v2/get-entity-details/{symbol_name}-share-price"
             indResponse = requests.get(indMoneyUrl)
             indResponseData = indResponse.json()
             json_string = json.dumps(indResponseData)
@@ -195,13 +208,11 @@ def syncSecurityIds():
                 market_cap='MID'
             elif 'marketCap=LARGE' in json_string:
                 market_cap='LARGE'
-            value = { "price": responseData['data']['Ltp'], "market_cap": market_cap, "name": el['SM_SYMBOL_NAME'], "returns": stockReturns, "volume": responseData['data']['vol_t_td'] }
+            value = { "price": responseData['data']['Ltp'], "market_cap": market_cap, "name": el['SM_SYMBOL_NAME'], "returns": stockReturns, "Secid": secId, "volume": responseData['data']['vol_t_td'] }
             target_dict[secId] = value
             appendToDictList('store/dhan_security_ids.json',value)
             print(len(target_dict))
 
-        except Exception as e:
-            print(e)
+        except Exception as err:
+            print(f"An error occurred: {err}")
     # list_of_dicts_to_xlsx('store/finalized_dhan_ids.xlsx', raw_list)
-
-syncSecurityIds()
