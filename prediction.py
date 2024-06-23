@@ -25,6 +25,140 @@ class PredictionService:
 
         else: return False
 
+def isMidCapBullish(filePath):
+    openValue = None
+    maxValue = 0
+    minValue = 1000000000000
+
+    isLevel1Clear = False
+    targetSecurityId = None
+    currentPrice = None
+
+    # Open and read the JSON file
+    with open(filePath, 'r') as file:
+        data = json.load(file) # Parse JSON data into a Python object
+
+        filtered_data = [entry for entry in data if entry.get("LTT") != "00:00:00"]
+        for index, el in enumerate(filtered_data):
+            if 'type' in el and 'LTP' in el:
+                if el['type'] == 'Ticker Data' or el['type'] == 'Quote Data':
+                    value = float(el['LTP'])
+                    # Assign values as per current value
+                    if (value > maxValue): maxValue = value
+                    if (value < minValue): minValue = value
+                    if (index == 0):
+                        openValue = value
+                        continue
+
+                    # Check current position
+                    if (index == len(filtered_data) - 1):
+                        openDiff = (value * 100 / openValue) - 100
+                        if (openDiff >= 0.1 and openDiff < 5): # Positive movement
+                            downDiff = (minValue * 100 / openValue) - 100
+                            if (downDiff >= -0.5): # Today no big negative movement in past
+                                upDiff = (maxValue * 100 / openValue) - 100
+                                if (upDiff < 5): # Today no too high movement in past
+                                    targetSecurityId = el['security_id']
+                                    currentPrice = value
+                                    isLevel1Clear = True
+  
+    # Check for level 2
+    if isLevel1Clear == True:
+        isLevel2Clear = False
+        last_five_mins_list = filter_last_5_minutes(filtered_data, filtered_data[len(filtered_data) - 1])
+        if len(last_five_mins_list) > 60 or len(last_five_mins_list) <= 20:
+            return False
+        
+        stable_count = 0
+        up_count = 0
+        low_count = 0
+        stable_avg_count = 0
+        avg_up_count = 0
+        avg_low_count = 0
+        first_el_of_five_min = None
+        last_el_of_five_min = None
+        first_avg_of_five_min = None
+        last_avg_of_five_min = None
+        first_buy_quantity = None
+        last_buy_quantity = None
+        first_sell_quantity = None
+        last_sell_quantity = None
+        max_value_of_five_min = -100000
+        mediate_max_value = -10000
+        for index, el in enumerate(last_five_mins_list):
+            if 'type' in el and 'LTP' in el:
+                if el['type'] == 'Ticker Data' or el['type'] == 'Quote Data':
+                    value = float(el['LTP'])
+                    avg_price = float(el['avg_price'])
+                    if value > max_value_of_five_min:
+                        max_value_of_five_min = value
+                    if (index == 0): 
+                        first_el_of_five_min = value 
+                        first_avg_of_five_min = avg_price
+                        first_buy_quantity = el['total_buy_quantity']
+                        first_sell_quantity = el['total_sell_quantity']
+                        continue
+                    elif index == len(last_five_mins_list) - 1:
+                        last_el_of_five_min = value
+                        last_avg_of_five_min = avg_price
+                        last_buy_quantity = el['total_buy_quantity']
+                        last_sell_quantity = el['total_sell_quantity']
+                    elif value > mediate_max_value:
+                        mediate_max_value = value
+
+                    prev_el = last_five_mins_list[index - 1]
+                    prev_value = float(prev_el['LTP'])
+                    if (value == prev_value): stable_count = stable_count + 1 # Stable position
+                    if (value > prev_value): up_count = up_count + 1 # Up position
+                    if (value < prev_value): low_count = low_count + 1 # Lower position
+                    prev_avg = float(prev_el['avg_price'])
+                    if (prev_avg == avg_price): stable_avg_count = stable_avg_count + 1 # Stable position
+                    if (avg_price > prev_avg): avg_up_count = avg_up_count + 1 # Up position
+                    if (avg_price < prev_avg): avg_low_count = avg_low_count + 1 # Lower position
+
+        # Concluding level 2
+        total_count = len(last_five_mins_list)
+        stable_ratio = stable_count * 100 / total_count
+        up_ratio = up_count * 100 / total_count
+        low_ratio = low_count * 100 / total_count
+        stable_avg_ratio = stable_avg_count * 100 / total_count
+        avg_up_ratio = avg_up_count * 100 / total_count
+        avg_low_ratio = avg_low_count * 100 / total_count
+        print({ "stable_ratio": stable_ratio, "up_ratio": up_ratio, "low_ratio": low_ratio, "stable_avg_ratio": stable_avg_ratio, "avg_up_ratio": avg_up_ratio, "avg_low_ratio": avg_low_ratio })
+
+        if (low_ratio >= up_ratio or low_ratio >= 49 or avg_low_ratio >= 33): # Downward movement in last 5 mins
+            return False
+        if (stable_ratio >= 20 or stable_avg_ratio > 33): # Stable movement, Scalping unpredictable
+            return False
+        if (up_ratio >= 40 or avg_up_ratio >= 60): # Too good time to buy the stock
+            isLevel2Clear = True
+        else: return False # Unpredictable   
+
+        if (isLevel2Clear == True):
+            first_to_current_ratio = (last_el_of_five_min * 100 / first_el_of_five_min) - 100
+            mediate_to_current_ratio = (last_el_of_five_min * 100 / mediate_max_value) - 100
+            first_to_current_avg_ratio = (last_avg_of_five_min * 100 / first_avg_of_five_min) - 100
+            first_to_current_buy_ratio = (last_buy_quantity * 100 / first_buy_quantity) - 100
+            first_to_current_sell_ratio = (last_sell_quantity * 100 / first_sell_quantity) - 100
+            print({ "mediate_max_value": mediate_max_value, "last_el_of_five_min": last_el_of_five_min, "first_to_current_ratio": first_to_current_ratio, "first_to_current_avg_ratio": first_to_current_avg_ratio, "first_to_current_buy_ratio": first_to_current_buy_ratio, "first_to_current_sell_ratio": first_to_current_sell_ratio })
+            if (first_to_current_ratio <= 0.125 or first_to_current_avg_ratio < 0.075): # No up movement for scalping
+                return False
+            elif (mediate_to_current_ratio <= -0.25): # No up movement for scalping
+                return False
+            elif (first_to_current_buy_ratio <= 2.5): # No up movement for buyer
+                return False
+            elif (first_to_current_buy_ratio < first_to_current_sell_ratio): # High number of sellers
+                return False
+            # Save data to check prediction later on 
+            else: 
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                filename = f'store/prediction/data_{timestamp}.json'
+                with open(filename, 'w') as file:
+                    json.dump(filtered_data, file, indent=4)
+                # buy_stock(targetSecurityId, currentPrice) # Buy stock
+                print('YOU CAN BUY STOCK')
+                return True # Too good time to buy the stock
+
 def isIndexBullish(filePath):
     openValue = None
     maxValue = 0
@@ -241,4 +375,4 @@ def filter_last_5_minutes(data, targetData):
 
     return [item for item in data if is_within_last_5_minutes(item)]
 
-# isIndexBullish("test")
+isMidCapBullish("store/test.json")
