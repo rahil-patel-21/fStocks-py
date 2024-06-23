@@ -25,7 +25,7 @@ class PredictionService:
 
         else: return False
 
-def isMidCapBullish(filePath):
+def isMidCapBullish(filePath): # For mid cap
     openValue = None
     maxValue = 0
     minValue = 1000000000000
@@ -159,7 +159,7 @@ def isMidCapBullish(filePath):
                 print('YOU CAN BUY STOCK')
                 return True # Too good time to buy the stock
 
-def isIndexBullish(filePath):
+def isIndexBullish(filePath): # For nifty index
     openValue = None
     maxValue = 0
     minValue = 1000000000000
