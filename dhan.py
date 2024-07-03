@@ -7,7 +7,7 @@ from datetime import datetime
 import requests # type: ignore
 from dotenv import load_dotenv # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
-from prediction import isBullish, isIndexBullish # type: ignore
+from prediction import isBullish, isIndexBullish, isMidCapBullish # type: ignore
 from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
 
 # Load .env file
@@ -29,6 +29,8 @@ def init(type):
         instruments = getNiftyIndexes()
     elif (type == 'SMALL_CAP'):
         instruments = getSmallCapCompanies()
+    elif (type == 'HDFC_24_07_25'):
+        instruments = getHDFCIndex()    
     else: instruments = []
     print(instruments)
 
@@ -82,8 +84,8 @@ async def on_message(_, message):
             json.dump(existing_data, file, indent=4)
 
         # isBullish(file_path)
-        result = isIndexBullish(file_path)
-        print(result)
+        # result = isMidCapBullish(file_path)
+        # print(result)
 
     except Exception as e:
         print('ERROR')
@@ -117,6 +119,16 @@ def getSmallCapCompanies():
             if (el['market_cap'] != 'MID'): continue
             if (len(finalizedList) >= 100): continue
             finalizedList.append((1,str(el['Secid'])))
+
+    return finalizedList
+
+def getHDFCIndex():
+    finalizedList = []
+    with open('store/hdfc_24_07_25.json', 'r') as file:
+        indexList = json.load(file)
+        for key in indexList:
+            value = indexList[key]
+            finalizedList.append((value['segment'],key))
 
     return finalizedList
 

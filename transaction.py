@@ -16,6 +16,7 @@ dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
 def buy_stock(securityId, currentPrice):
     try:
+        print('BUYING STOCK')
         now = datetime.now(timezone('UTC'))
         current_date = date.today()
         outputList = injectQuery(f'''SELECT * FROM "Transactions" WHERE "security_id" = '{securityId}' AND "initiated_at" >= '{current_date}' LIMIT 1''')
@@ -25,7 +26,7 @@ def buy_stock(securityId, currentPrice):
         currentBalance = getCurrentBalance()
         totalQuantity = math.floor(currentBalance / currentPrice) - 1
         if (totalQuantity <= 2): return {"valid": False, "message": "There is an issue with the quantity"}
-        elif (currentBalance < 15000): return {"valid": False, "message": "Insufficient wallet balance"}
+        elif (currentBalance < 2500): return {"valid": False, "message": "Insufficient wallet balance"}
         
         uniqueId  = f"{current_date}-{securityId}"
         injectQuery(f'''INSERT INTO
