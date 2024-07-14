@@ -3,8 +3,8 @@ import os
 import re
 import json
 import datetime
-from datetime import datetime
 import requests # type: ignore
+from datetime import datetime, timedelta
 from dotenv import load_dotenv # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
 from prediction import isBullish, isIndexBullish, isMidCapBullish # type: ignore
@@ -15,6 +15,7 @@ load_dotenv()
 
 DHAN_CLIENT_CODE=os.environ.get("DHAN_CLIENT_CODE")
 DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
+DHAN_TICK_BASE_URL=os.environ.get("DHAN_TICK_BASE_URL")
 
 cached_data = {}
 current_date = datetime.now().strftime("%Y-%m-%d")
@@ -228,3 +229,118 @@ def syncSecurityIds():
         except Exception as err:
             print(f"An error occurred: {err}")
     # list_of_dicts_to_xlsx('store/finalized_dhan_ids.xlsx', raw_list)
+
+def getChartData():
+    # Define the start and end times as datetime objects
+    start_time = datetime(2024, 7, 12, 9, 15, 00) 
+    end_time = datetime(2024, 7, 12, 15, 15, 00)
+    start_timestamp = int(start_time.timestamp())
+    end_timestamp = int(end_time.timestamp())
+
+    url = DHAN_TICK_BASE_URL + 'getDataS'
+    headers = {'Content-Type': 'application/json'}
+    data = {
+    "EXCH": "NSE",
+    "SEG": "D",
+    "INST": "OPTSTK",
+    "SEC_ID": 114857,
+    "START": start_timestamp,
+    "END": end_timestamp,
+    "INTERVAL": "15S" }
+
+    chartResponse = requests.post(url, headers=headers, data=json.dumps(data))
+    chartData = chartResponse.json()
+    del chartData['data']['oi']
+    
+    totalClosingValue = 0
+    minValue = 1000000000
+    finalizedList = []
+    firstCloseValue = None
+    for index, _ in enumerate(chartData['data']['o']):
+        openValue = chartData['data']['o'][index]
+        closeValue = chartData['data']['c'][index]
+        ocDiff = (chartData['data']['c'][index] * 100 / chartData['data']['o'][index]) - 100
+        timeStr = chartData['data']['Time'][index]
+        # volume = chartData['data']['v'][index]
+        volume = 1
+        totalClosingValue = totalClosingValue + closeValue
+        avgCloseValue = totalClosingValue / (index + 1)
+        isAboveAvg = avgCloseValue < closeValue
+        prediction = 'NOT_DECIDED'
+
+        if closeValue < minValue:
+            minValue = closeValue
+        minToCurrentRatio = (closeValue * 100 / minValue) - 100
+
+        if index == 0: 
+            firstCloseValue = closeValue
+            finalizedList.append({"openValue": openValue, "closeValue": closeValue, "avgCloseValue": avgCloseValue, "isAboveAvg": isAboveAvg, "prevCloseDiff": 0, "ocDiff": ocDiff, "timeStr": timeStr, "volume": volume, "prevVolumeDiff": 0,  "positiveCount": 0, "negativeCount": 0, "minToCurrentRatio": minToCurrentRatio, "prediction": prediction})
+            continue
+
+        prevCloseValue = chartData['data']['c'][index - 1]
+        prevCloseDiff = (closeValue * 100 / prevCloseValue) - 100
+        # prevVolume = chartData['data']['v'][index - 1]
+        # prevVolumeDiff = (volume * 100 / prevVolume) - 100
+        prevVolumeDiff = 1
+
+        if index <= 4: 
+            finalizedList.append({"openValue": openValue, "closeValue": closeValue, "avgCloseValue": avgCloseValue, "isAboveAvg": isAboveAvg, "prevCloseDiff": prevCloseDiff, "ocDiff": ocDiff, "timeStr": timeStr, "volume": volume, "prevVolumeDiff": prevVolumeDiff,  "positiveCount": 0, "negativeCount": 0, "minToCurrentRatio": minToCurrentRatio, "prediction": prediction})
+            continue
+
+        negativeCount = 0
+        positiveCount = 0
+        maxValue = 0
+        canPrevBuy = False
+        for i in range(0, 5):
+            targetIndex = index - (i + 1)
+            targetData = finalizedList[targetIndex]
+            if (targetData['isAboveAvg'] == True and targetData['prevCloseDiff'] > 0 and targetData['ocDiff'] > 0 and targetData['minToCurrentRatio'] > 2.5):
+                positiveCount = positiveCount + 1
+            else: negativeCount = negativeCount + 1
+            if targetData['closeValue'] > maxValue:
+                maxValue = targetData['closeValue']
+            if (targetData['prediction'] == 'CAN_BUY'): canPrevBuy = True
+        maxDiff = (closeValue * 100 / maxValue) - 100
+
+        if (negativeCount > 2 or positiveCount <= 2 or isAboveAvg == False): prediction = 'RISKY'
+        elif (positiveCount >= 3 and prevCloseDiff > 0 and ocDiff > 0 and isAboveAvg == True and maxDiff > 0 and canPrevBuy == False and firstCloseValue < closeValue and firstCloseValue < openValue):
+            prediction = 'CAN_BUY'  
+        else:
+            prediction = 'RISKY_BUY'
+
+        # Last check
+        if (prediction == 'CAN_BUY'):
+            last_5_mins_list = filter_last_8_minutes(finalizedList, chartData['data']['Time'][index])
+            maxValue = 0
+            canPrevBuy = False
+            for el in last_5_mins_list:
+                if (el['closeValue'] > maxValue):
+                    maxValue = el['closeValue']
+                if (el['prediction'] == 'CAN_BUY'): canPrevBuy = True
+            maxDiff = (closeValue * 100 / maxValue) - 100
+            firstCloseDiff = (closeValue * 100 / firstCloseValue) - 100
+            target_time = parse_time(timeStr)
+            hours = target_time.hour
+            if (maxDiff <= 0.3 or canPrevBuy == True or firstCloseDiff > 60): prediction = 'SLIGHTLY_RISKY'
+            elif (hours >= 13): prediction = 'RISKY_TIME'
+            else: print({"maxDiff": maxValue, "time": timeStr, "closeValue": closeValue, "firstCloseDiff": firstCloseDiff})
+
+        finalizedList.append({"openValue": openValue, "closeValue": closeValue, "avgCloseValue": avgCloseValue, "isAboveAvg": isAboveAvg, "prevCloseDiff": prevCloseDiff, "ocDiff": ocDiff, "timeStr": timeStr, "volume": volume, "prevVolumeDiff": prevVolumeDiff, "positiveCount": positiveCount, "negativeCount": negativeCount, "minToCurrentRatio": minToCurrentRatio, "prediction": prediction})
+    list_of_dicts_to_xlsx('store/test.xlsx', finalizedList)
+
+def parse_time(time_str):
+    return datetime.strptime(time_str, "%Y-%m-%dT%H:%M:%S%z").time()
+
+def filter_last_8_minutes(data, time_str):
+    target_time = parse_time(time_str)
+    # Get the current date
+    today = datetime.today().date()
+    five_minutes_ago = (datetime.combine(today, target_time) - timedelta(minutes=8)).time()
+
+    def is_within_last_8_minutes(item):
+        ltt_time = parse_time(item["timeStr"])
+        return five_minutes_ago <= ltt_time <= target_time
+
+    return [item for item in data if is_within_last_8_minutes(item)]
+
+getChartData()
