@@ -243,7 +243,7 @@ def getChartData():
     "EXCH": "NSE",
     "SEG": "D",
     "INST": "OPTSTK",
-    "SEC_ID": 114857,
+    "SEC_ID": 142050,
     "START": start_timestamp,
     "END": end_timestamp,
     "INTERVAL": "15S" }
@@ -323,7 +323,7 @@ def getChartData():
             hours = target_time.hour
             if (maxDiff <= 0.3 or canPrevBuy == True or firstCloseDiff > 60): prediction = 'SLIGHTLY_RISKY'
             elif (hours >= 13): prediction = 'RISKY_TIME'
-            else: print({"maxDiff": maxValue, "time": timeStr, "closeValue": closeValue, "firstCloseDiff": firstCloseDiff})
+            else: print({"maxDiff": maxValue, "time": timeStr})
 
         finalizedList.append({"openValue": openValue, "closeValue": closeValue, "avgCloseValue": avgCloseValue, "isAboveAvg": isAboveAvg, "prevCloseDiff": prevCloseDiff, "ocDiff": ocDiff, "timeStr": timeStr, "volume": volume, "prevVolumeDiff": prevVolumeDiff, "positiveCount": positiveCount, "negativeCount": negativeCount, "minToCurrentRatio": minToCurrentRatio, "prediction": prediction})
     list_of_dicts_to_xlsx('store/test.xlsx', finalizedList)
