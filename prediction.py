@@ -155,7 +155,7 @@ def isMidCapBullish(filePath): # For mid cap
                 filename = f'store/prediction/data_{timestamp}.json'
                 with open(filename, 'w') as file:
                     json.dump(filtered_data, file, indent=4)
-                # buy_stock(targetSecurityId, currentPrice) # Buy stock
+                buy_stock(targetSecurityId, currentPrice) # Buy stock
                 print('YOU CAN BUY STOCK')
                 return True # Too good time to buy the stock
 
@@ -375,4 +375,4 @@ def filter_last_5_minutes(data, targetData):
 
     return [item for item in data if is_within_last_5_minutes(item)]
 
-isMidCapBullish("store/test.json")
+# isMidCapBullish("store/test.json")
