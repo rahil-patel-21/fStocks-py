@@ -1,17 +1,30 @@
 # Imports
 import os
+from datetime import datetime
 import psycopg2 # type: ignore
-from psycopg2 import pool # type: ignore
 from dotenv import load_dotenv # type: ignore
+from pymongo import MongoClient # type: ignore
 
 # Load .env file
 load_dotenv()
 
 connection = None
 connection_pool = None
+collection_rtscrdt = None
 
 def init_database():
     try:
+        
+        # Create a MongoClient object
+        uri = os.environ.get("MONGO_URI")
+        client = MongoClient(uri)
+        # Connect to a specific database
+        db = client['UAT']
+        # Access a collection
+        global collection_rtscrdt
+        collection_rtscrdt = db['rtscrdt']
+        print('MongoDB Connected Successfully !')
+
         # Create a connection pool
         global connection_pool
         connection_pool = psycopg2.pool.SimpleConnectionPool(
@@ -43,4 +56,12 @@ def injectQuery(query: str):
     if 'SELECT' in query:
         return rows
 
-init_database()
+def insertRecord(data: any, collectionName):
+    targetCollection = None
+    if (collectionName == 'rtscrdt'): targetCollection = collection_rtscrdt
+
+    if ('createdAt' not in data): data['createdAt'] = datetime.now()
+
+    targetCollection.insert_one(data)
+
+# init_database()
