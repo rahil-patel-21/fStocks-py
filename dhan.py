@@ -9,12 +9,14 @@ from dotenv import load_dotenv # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
 from prediction import isBullish, isIndexBullish, isMidCapBullish # type: ignore
 from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
+from database import insertRecord
 
 # Load .env file
 load_dotenv()
 
-DHAN_CLIENT_CODE=os.environ.get("DHAN_CLIENT_CODE")
 DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
+DHAN_CLIENT_CODE=os.environ.get("DHAN_CLIENT_CODE")
+DHAN_RTSCRDT_URL=os.environ.get("DHAN_RTSCRDT_URL")
 DHAN_TICK_BASE_URL=os.environ.get("DHAN_TICK_BASE_URL")
 
 cached_data = {}
@@ -22,22 +24,18 @@ current_date = datetime.now().strftime("%Y-%m-%d")
 
 dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
-def init(type):
-    instruments = []
-    if (type == 'NIFTY_COMPANIES'):
-        instruments = getNiftyCompanies()
-    elif (type == 'NIFTY_INDEX'):
-        instruments = getNiftyIndexes()
-    elif (type == 'SMALL_CAP'):
-        instruments = getSmallCapCompanies()
-    elif (type == 'HDFC_24_07_25'):
-        instruments = getHDFCIndex()    
-    else: instruments = []
-    print(instruments)
+def init():
+    instruments = getNiftyIndexes()
 
-    # Ticker - Ticker Data | Quote - Quote Data | Depth - Market Depth
-    feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Quote, on_connect=on_connect, on_message=on_message)
-    feed.run_forever()
+    data = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, "v2")
+    while True:
+        data.run_forever()
+        response = data.get_data()
+        response_type = response['type']
+        if (response_type != 'Full Data'): continue
+        del response['type']
+        del response['exchange_segment']
+        print(response)
 
 async def on_connect(_):
     print("Connected to websocket")
@@ -108,7 +106,7 @@ def getNiftyIndexes():
         companyData = json.load(file)
         for key in companyData:
             value = companyData[key]
-            finalizedList.append((value['segment'],key))
+            finalizedList.append((value['segment'],key, 21))
 
     return finalizedList
 
@@ -230,7 +228,7 @@ def syncSecurityIds():
             print(f"An error occurred: {err}")
     # list_of_dicts_to_xlsx('store/finalized_dhan_ids.xlsx', raw_list)
 
-def getChartData():
+def getChartData(targetTimeStr = ''):
     # Define the start and end times as datetime objects
     start_time = datetime(2024, 7, 12, 9, 15, 00) 
     end_time = datetime(2024, 7, 12, 15, 15, 00)
@@ -242,11 +240,14 @@ def getChartData():
     data = {
     "EXCH": "NSE",
     "SEG": "D",
-    "INST": "OPTSTK",
-    "SEC_ID": 114857,
-    "START": start_timestamp,
-    "END": end_timestamp,
-    "INTERVAL": "15S" }
+    "INST": "OPTIDX",
+    "SEC_ID": 72149,
+    "START": 1724354479,
+    "END": 1724436155,
+    "START_TIME": "Fri Aug 23 2024 00:51:19 GMT+0530 (India Standard Time)",
+    "END_TIME": "Fri Aug 23 2024 23:32:35 GMT+0530 (India Standard Time)",
+    "INTERVAL": "30S"
+}
 
     chartResponse = requests.post(url, headers=headers, data=json.dumps(data))
     chartData = chartResponse.json()
@@ -261,12 +262,15 @@ def getChartData():
         closeValue = chartData['data']['c'][index]
         ocDiff = (chartData['data']['c'][index] * 100 / chartData['data']['o'][index]) - 100
         timeStr = chartData['data']['Time'][index]
+
+        if timeStr == '2024-08-23T09:29:30+05:30': break
         # volume = chartData['data']['v'][index]
         volume = 1
         totalClosingValue = totalClosingValue + closeValue
         avgCloseValue = totalClosingValue / (index + 1)
         isAboveAvg = avgCloseValue < closeValue
         prediction = 'NOT_DECIDED'
+        print(isAboveAvg)
 
         if closeValue < minValue:
             minValue = closeValue
@@ -323,7 +327,7 @@ def getChartData():
             hours = target_time.hour
             if (maxDiff <= 0.3 or canPrevBuy == True or firstCloseDiff > 60): prediction = 'SLIGHTLY_RISKY'
             elif (hours >= 13): prediction = 'RISKY_TIME'
-            else: print({"maxDiff": maxValue, "time": timeStr, "closeValue": closeValue, "firstCloseDiff": firstCloseDiff})
+            else: print({"maxDiff": maxValue, "time": timeStr})
 
         finalizedList.append({"openValue": openValue, "closeValue": closeValue, "avgCloseValue": avgCloseValue, "isAboveAvg": isAboveAvg, "prevCloseDiff": prevCloseDiff, "ocDiff": ocDiff, "timeStr": timeStr, "volume": volume, "prevVolumeDiff": prevVolumeDiff, "positiveCount": positiveCount, "negativeCount": negativeCount, "minToCurrentRatio": minToCurrentRatio, "prediction": prediction})
     list_of_dicts_to_xlsx('store/test.xlsx', finalizedList)
@@ -343,4 +347,62 @@ def filter_last_8_minutes(data, time_str):
 
     return [item for item in data if is_within_last_8_minutes(item)]
 
-getChartData()
+def get_rtscrdt_data():
+    headers = {'Content-Type': 'application/json'}
+    data = { "Data": { "Seg": 2, "Secid": 36750 } }
+
+    apiResponse = requests.post(DHAN_RTSCRDT_URL, headers=headers, data=json.dumps(data))
+    responseData = apiResponse.json()
+    finalData = responseData['data']
+    insertRecord(data=finalData, collectionName='rtscrdt')
+
+def getCandleData(targetTimeStr=""):
+    url = DHAN_TICK_BASE_URL + 'getDataS'
+    headers = {'Content-Type': 'application/json'}
+    data = {
+    "EXCH": "NSE",
+    "SEG": "D",
+    "INST": "OPTIDX",
+    "SEC_ID": 72149,
+    "START": 1724354479,
+    "END": 1724436155,
+    "START_TIME": "Fri Aug 23 2024 00:51:19 GMT+0530 (India Standard Time)",
+    "END_TIME": "Fri Aug 23 2024 23:32:35 GMT+0530 (India Standard Time)",
+    "INTERVAL": "30S"
+    }
+
+    chartResponse = requests.post(url, headers=headers, data=json.dumps(data))
+    chartData = chartResponse.json()
+    del chartData['data']['oi']
+
+    finalizedList = []
+    for index, _ in enumerate(chartData['data']['o']):
+        timeStr = chartData['data']['Time'][index]
+        if (targetTimeStr == timeStr): break
+
+        open = chartData['data']['o'][index]
+        close = chartData['data']['c'][index]
+        high = chartData['data']['h'][index]
+        low = chartData['data']['l'][index]
+        finalizedList.append({"open": open, "close": close, "high": high, "low": low, "timeStr": timeStr})
+
+    return finalizedList
+
+def cal():
+    targetList = getCandleData(targetTimeStr="2024-08-23T09:29:30+05:30")
+
+    positiveRallyCount = 0
+    for index, item in enumerate(targetList):
+        open = item['open']
+        close = item['close']
+        high = item['high']
+        low = item['low']
+        isLastEl = (len(targetList) - 1) == index
+
+        ocDiff = (close * 100 / open) - 100
+        print(ocDiff)
+        if (isLastEl and ocDiff <= 0): return False
+        if (ocDiff < 0): positiveRallyCount = 0
+        else: positiveRallyCount = positiveRallyCount + 1
+
+        print(positiveRallyCount)
