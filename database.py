@@ -3,8 +3,9 @@ import os
 from datetime import datetime
 from dotenv import load_dotenv # type: ignore
 from pymongo import MongoClient # type: ignore
-from sqlalchemy import create_engine # type: ignore
 from sqlalchemy.pool import QueuePool # type: ignore
+from sqlalchemy.orm import sessionmaker # type: ignore
+from sqlalchemy import create_engine, text # type: ignore
 
 # Load .env file
 load_dotenv()
@@ -12,6 +13,7 @@ load_dotenv()
 connection = None
 connection_pool = None
 collection_rtscrdt = None
+db_engine = None
 
 def init_database():
     global collection_rtscrdt, db_engine
@@ -45,19 +47,30 @@ def init_database():
             print("Failed to create PostgreSQL connection pool")
 
 def injectQuery(query: str):
-    # Get a connection from the pool
-    connection = connection_pool.getconn()
+    global db_engine  # Ensure you use the global db_engine
+    if db_engine is None:
+        print("Database engine is not initialized.")
+        return
 
-    cursor = connection.cursor()
-    cursor.execute(query)
-    if 'SELECT' in query:
-        rows = cursor.fetchall()
-    connection.commit()
-    cursor.close()
-    connection_pool.putconn(connection)
-        
-    if 'SELECT' in query:
-        return rows
+    # Create a new session
+    Session = sessionmaker(bind=db_engine)
+    session = Session()
+
+    try:
+        # If the query is a SELECT
+        if 'SELECT' in query:
+            result = session.execute(text(query))  # Execute raw query
+            return result.fetchall()  # Fetch all rows
+
+        # For INSERT, UPDATE, DELETE
+        session.execute(text(query))  # Execute raw query
+        session.commit()  # Commit the transaction
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        session.rollback()  # Rollback in case of error
+    finally:
+        session.close()  # Close the session
 
 def insertRecord(data: any, collectionName):
     targetCollection = None

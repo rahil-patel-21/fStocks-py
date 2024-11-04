@@ -4,12 +4,12 @@ import re
 import json
 import datetime
 import requests # type: ignore
+from database import injectQuery
+from database import insertRecord
 from datetime import datetime, timedelta
 from dotenv import load_dotenv # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
-from prediction import isBullish, isIndexBullish, isMidCapBullish # type: ignore
 from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
-from database import insertRecord
 
 # Load .env file
 load_dotenv()
@@ -35,7 +35,16 @@ def init():
         if (response_type != 'Full Data'): continue
         del response['type']
         del response['exchange_segment']
-        print(response)
+
+        try:
+            response_json = json.dumps(response)
+            raw_query = f"""
+            INSERT INTO "rawstuffs" (date, type, raw_data) 
+            VALUES (NOW(), 1, '{response_json}')
+            """
+            injectQuery(raw_query)
+        except Exception as e:
+            print(e)
 
 async def on_connect(_):
     print("Connected to websocket")
