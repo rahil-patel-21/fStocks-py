@@ -1,9 +1,10 @@
 # Imports
 import os
 from datetime import datetime
-import psycopg2 # type: ignore
 from dotenv import load_dotenv # type: ignore
 from pymongo import MongoClient # type: ignore
+from sqlalchemy import create_engine # type: ignore
+from sqlalchemy.pool import QueuePool # type: ignore
 
 # Load .env file
 load_dotenv()
@@ -13,33 +14,35 @@ connection_pool = None
 collection_rtscrdt = None
 
 def init_database():
+    global collection_rtscrdt, db_engine
     try:
-        
-        # Create a MongoClient object
-        uri = os.environ.get("MONGO_URI")
-        client = MongoClient(uri)
-        # Connect to a specific database
+        # MongoDB connection
+        mongo_uri = os.environ.get("MONGO_URI")
+        client = MongoClient(mongo_uri)
         db = client['UAT']
-        # Access a collection
-        global collection_rtscrdt
         collection_rtscrdt = db['rtscrdt']
-        print('MongoDB Connected Successfully !')
+        print('MongoDB Connected Successfully!')
 
-        # Create a connection pool
-        global connection_pool
-        connection_pool = psycopg2.pool.SimpleConnectionPool(
-            1, 20,
-            dbname=os.environ.get("DB_NAME"),
-            user=os.environ.get("DB_USERNAME"),
-            password=os.environ.get("DB_PASS"),
-            host=os.environ.get("DB_HOST"),
-            port=os.environ.get("DB_PORT")
+        # PostgreSQL connection pool using SQLAlchemy
+        db_engine = create_engine(
+            f"postgresql+psycopg2://{os.environ.get('DB_USERNAME')}:{os.environ.get('DB_PASS')}@"
+            f"{os.environ.get('DB_HOST')}:{os.environ.get('DB_PORT')}/{os.environ.get('DB_NAME')}",
+            poolclass=QueuePool,
+            pool_size=20,
+            max_overflow=0,
         )
-        if connection_pool:
-            print("Connection pool created successfully")
+        if db_engine:
+            print("PostgreSQL Connection Pool created successfully")
 
     except Exception as e:
         print(f"An error occurred: {e}")
+
+    finally:
+        # Verify if both connections are established
+        if collection_rtscrdt is None:
+            print("Failed to connect to MongoDB")
+        if db_engine is None:
+            print("Failed to create PostgreSQL connection pool")
 
 def injectQuery(query: str):
     # Get a connection from the pool
@@ -63,5 +66,3 @@ def insertRecord(data: any, collectionName):
     if ('createdAt' not in data): data['createdAt'] = datetime.now()
 
     targetCollection.insert_one(data)
-
-# init_database()

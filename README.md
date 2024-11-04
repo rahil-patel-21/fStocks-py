@@ -10,9 +10,9 @@ pip3 install python-dotenv
 pip3 install fastapi uvicorn
 pip3 install pandas
 pip3 install openpyxl
-pip3 install psycopg2-binary
 pip3 install urllib3==1.26.6
 pip3 install pymongo
+pip3 install sqlalchemy
 ```
 
 ## Run project

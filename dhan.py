@@ -24,22 +24,18 @@ current_date = datetime.now().strftime("%Y-%m-%d")
 
 dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
-def init(type):
-    instruments = []
-    if (type == 'NIFTY_COMPANIES'):
-        instruments = getNiftyCompanies()
-    elif (type == 'NIFTY_INDEX'):
-        instruments = getNiftyIndexes()
-    elif (type == 'SMALL_CAP'):
-        instruments = getSmallCapCompanies()
-    elif (type == 'HDFC_24_07_25'):
-        instruments = getHDFCIndex()    
-    else: instruments = []
-    print(instruments)
+def init():
+    instruments = getNiftyIndexes()
 
-    # Ticker - Ticker Data | Quote - Quote Data | Depth - Market Depth
-    feed = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, marketfeed.Quote, on_connect=on_connect, on_message=on_message)
-    feed.run_forever()
+    data = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, "v2")
+    while True:
+        data.run_forever()
+        response = data.get_data()
+        response_type = response['type']
+        if (response_type != 'Full Data'): continue
+        del response['type']
+        del response['exchange_segment']
+        print(response)
 
 async def on_connect(_):
     print("Connected to websocket")
@@ -110,7 +106,7 @@ def getNiftyIndexes():
         companyData = json.load(file)
         for key in companyData:
             value = companyData[key]
-            finalizedList.append((value['segment'],key))
+            finalizedList.append((value['segment'],key, 21))
 
     return finalizedList
 
@@ -360,9 +356,6 @@ def get_rtscrdt_data():
     finalData = responseData['data']
     insertRecord(data=finalData, collectionName='rtscrdt')
 
-# get_rtscrdt_data()
-
-
 def getCandleData(targetTimeStr=""):
     url = DHAN_TICK_BASE_URL + 'getDataS'
     headers = {'Content-Type': 'application/json'}
@@ -395,8 +388,6 @@ def getCandleData(targetTimeStr=""):
 
     return finalizedList
 
-getCandleData(targetTimeStr="2024-08-23T09:29:30+05:30")
-
 def cal():
     targetList = getCandleData(targetTimeStr="2024-08-23T09:29:30+05:30")
 
@@ -415,5 +406,3 @@ def cal():
         else: positiveRallyCount = positiveRallyCount + 1
 
         print(positiveRallyCount)
-
-cal()
