@@ -18,6 +18,7 @@ DHAN_AUTH_TOKEN=os.environ.get("DHAN_AUTH_TOKEN")
 DHAN_CLIENT_CODE=os.environ.get("DHAN_CLIENT_CODE")
 DHAN_RTSCRDT_URL=os.environ.get("DHAN_RTSCRDT_URL")
 DHAN_TICK_BASE_URL=os.environ.get("DHAN_TICK_BASE_URL")
+DHAN_CHAIN_URL=os.environ.get("DHAN_CHAIN_URL")
 
 cached_data = {}
 current_date = datetime.now().strftime("%Y-%m-%d")
@@ -44,6 +45,8 @@ def init():
             """
             injectQuery(raw_query)
         except Exception as e:
+            print('Re starting ...')
+            init()
             print(e)
 
 async def on_connect(_):
@@ -99,16 +102,6 @@ async def on_message(_, message):
         print('ERROR')
         print(e)
 
-def getNiftyCompanies():
-    finalizedList = []
-    with open('store/nifty_companies.json', 'r') as file:
-        companyData = json.load(file)
-        for key in companyData:
-            value = companyData[key]
-            finalizedList.append((value['segment'],key))
-
-    return finalizedList
-
 def getNiftyIndexes():
     finalizedList = []
     with open('store/nifty_index.json', 'r') as file:
@@ -116,27 +109,6 @@ def getNiftyIndexes():
         for key in companyData:
             value = companyData[key]
             finalizedList.append((value['segment'],key, 21))
-
-    return finalizedList
-
-def getSmallCapCompanies():
-    finalizedList = []
-    with open('store/dhan_security_ids.json', 'r') as file:
-        companyList = json.load(file)
-        for el in companyList:
-            if (el['market_cap'] != 'MID'): continue
-            if (len(finalizedList) >= 100): continue
-            finalizedList.append((1,str(el['Secid'])))
-
-    return finalizedList
-
-def getHDFCIndex():
-    finalizedList = []
-    with open('store/hdfc_24_07_25.json', 'r') as file:
-        indexList = json.load(file)
-        for key in indexList:
-            value = indexList[key]
-            finalizedList.append((value['segment'],key))
 
     return finalizedList
 
@@ -415,3 +387,33 @@ def cal():
         else: positiveRallyCount = positiveRallyCount + 1
 
         print(positiveRallyCount)
+
+def syncNiftyIndex():
+    body = { "Data": { "Seg": 0, "Sid": 13, "Exp": 1415385000 } } # 07 Nov 2024
+    headers = { "origin": "https://web.dhan.co", "referer": "https://web.dhan.co/" }
+    apiResponse = requests.post(DHAN_CHAIN_URL, headers=headers, data=json.dumps(body))
+    responseData = apiResponse.json()['data']
+    current_ltp = responseData['sltp']
+    opData = responseData['oc']
+
+    targetData = {}
+    index = 0
+    for key in opData:
+        premium_value = float(key)
+        diff_value = abs(premium_value - current_ltp)
+        if (diff_value <= 800):
+            ce_data = opData[key]['ce']
+            ce_sid = ce_data['sid']
+            targetData[ce_sid] = { "index": index, "name": ce_data['sym'], "segment": 2 }
+            index = index + 1
+
+            pe_data = opData[key]['pe']
+            pe_sid = pe_data['sid']
+            targetData[pe_sid] = { "index": index, "name": pe_data['sym'], "segment": 2 }
+            index = index + 1
+
+    file_path = f"store/nifty_index.json" 
+    with open(file_path, 'w') as json_file:
+        json.dump(targetData, json_file, indent=4)
+
+syncNiftyIndex()
