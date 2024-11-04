@@ -15,6 +15,14 @@ pip3 install pymongo
 pip3 install sqlalchemy
 ```
 
+```
+CREATE TABLE RawStuffs (
+    date TIMESTAMPTZ NOT NULL,
+    type SMALLINT NOT NULL,
+    raw_data JSONB NOT NULL
+);
+```
+
 ## Run project
 
 ```
