@@ -7,9 +7,10 @@ import datetime
 import requests # type: ignore
 from database import injectQuery
 from database import insertRecord
-from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv # type: ignore
+from datetime import datetime, timedelta, timezone
 from dhanhq import dhanhq, marketfeed # type: ignore
+from custom_socket.monitoring import syncTargetIndex # type: ignore
 from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
 
 # Load .env file
@@ -27,7 +28,8 @@ current_date = datetime.now().strftime("%Y-%m-%d")
 dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
 def init():
-    instruments = getNiftyIndexes()
+    syncIndexes()
+    instruments = getIndexes()
     data = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, "v2")
 
     while True:
@@ -45,67 +47,11 @@ def init():
         del response['type']
         del response['exchange_segment']
 
-        try:
-            insertFullData(response)
-        except Exception as e:
-            print(e)
+        insertFullData(response)
 
-async def on_connect(_):
-    print("Connected to websocket")
-
-async def on_message(_, message):
-    try:
-        print(message)
-        # Default assign -> Cached data
-        security_id = message['security_id']
-        if str(security_id) not in cached_data:
-            cached_data[str(security_id)] = {"open_price": 0, "risk": 100}
-
-        target_data = cached_data[str(security_id)]
-        if (target_data['open_price'] == 0 and message['type'] == 'Previous Close'):
-            target_data['open_price'] = float(message['prev_close'])
-
-        if 'LTT' not in message:
-            if message['type'] == 'OI Data':
-                message['LTT'] = datetime.now().strftime("%H:%M:%S")
-            else: return
-        if 'last_sync_time' not in cached_data[str(security_id)]:
-            cached_data[str(security_id)]['last_sync_time'] = '09:15:00'
-        diff_in_seconds = time_difference_in_seconds(cached_data[str(security_id)]['last_sync_time'], message['LTT'])
-        if (diff_in_seconds < 5):
-            return {} 
-        cached_data[str(security_id)]['last_sync_time'] = message['LTT']
-            
-        # Read existing data from the file if it exists
-        file_path = None
-        if message['type'] == 'Quote Data':
-            file_path = f"store/quote_data/{current_date}_{message['security_id']}" 
-        elif message['type'] == 'OI Data':
-            file_path = f"store/oi_data/{current_date}_{message['security_id']}" 
-        else: file_path = f"store/ticker_data/nifty_50_{message['security_id']}_{current_date}" 
-
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as file:
-                try:
-                    existing_data = json.load(file)
-                except json.JSONDecodeError:
-                    existing_data = []
-        else: existing_data = []
-        existing_data.append(message)
-        with open(file_path, 'w') as file:
-            json.dump(existing_data, file, indent=4)
-
-        # isBullish(file_path)
-        # result = isMidCapBullish(file_path)
-        # print(result)
-
-    except Exception as e:
-        print('ERROR')
-        print(e)
-
-def getNiftyIndexes():
+def getIndexes():
     finalizedList = []
-    with open('store/nifty_index.json', 'r') as file:
+    with open('store/indexes.json', 'r') as file:
         companyData = json.load(file)
         for key in companyData:
             value = companyData[key]
@@ -389,33 +335,24 @@ def cal():
 
         print(positiveRallyCount)
 
-def syncNiftyIndex():
-    body = { "Data": { "Seg": 0, "Sid": 13, "Exp": 1415385000 } } # 07 Nov 2024
-    headers = { "origin": "https://web.dhan.co", "referer": "https://web.dhan.co/" }
-    apiResponse = requests.post(DHAN_CHAIN_URL, headers=headers, data=json.dumps(body))
-    responseData = apiResponse.json()['data']
-    current_ltp = responseData['sltp']
-    opData = responseData['oc']
+def syncIndexes():
+    nifty_50_data = syncTargetIndex(1415385000, 13) # 07 NOV 24
+    nifty_bank_data = syncTargetIndex(1415298600, 25) # 06 NOV 24
+    finnifty_data = syncTargetIndex(1415817000, 27) # 12 NOV 24
 
-    targetData = {}
-    index = 0
-    for key in opData:
-        premium_value = float(key)
-        diff_value = abs(premium_value - current_ltp)
-        if (diff_value <= 800):
-            ce_data = opData[key]['ce']
-            ce_sid = ce_data['sid']
-            targetData[ce_sid] = { "index": index, "name": ce_data['sym'], "segment": 2 }
-            index = index + 1
+    # Merge all derivatives
+    finalizedData = {}
+    for key in nifty_50_data:
+        finalizedData[key] = nifty_50_data[key]
+    for key in nifty_bank_data:
+        finalizedData[key] = nifty_bank_data[key]
+    for key in finnifty_data:
+        finalizedData[key] = finnifty_data[key]
 
-            pe_data = opData[key]['pe']
-            pe_sid = pe_data['sid']
-            targetData[pe_sid] = { "index": index, "name": pe_data['sym'], "segment": 2 }
-            index = index + 1
 
-    file_path = f"store/nifty_index.json" 
+    file_path = f"store/indexes.json" 
     with open(file_path, 'w') as json_file:
-        json.dump(targetData, json_file, indent=4)
+        json.dump(finalizedData, json_file, indent=4)
 
 def insertFullData(raw_response):
     market_depth = raw_response['depth']
@@ -481,4 +418,10 @@ def insertFullData(raw_response):
         INSERT INTO "FullData" ({columns_str})
         VALUES ({values_str})
     """
-    injectQuery(raw_query)
+    try:
+        injectQuery(raw_query)
+    except Exception as e:
+        if "unique constraint" in str(e):
+            pass
+        else: print(e)
+
