@@ -2,11 +2,12 @@
 import os
 import re
 import json
+import hashlib
 import datetime
 import requests # type: ignore
 from database import injectQuery
 from database import insertRecord
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv # type: ignore
 from dhanhq import dhanhq, marketfeed # type: ignore
 from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
@@ -27,7 +28,6 @@ dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
 def init():
     instruments = getNiftyIndexes()
-
     data = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, "v2")
 
     while True:
@@ -36,6 +36,7 @@ def init():
             response = data.get_data()
             response_type = response['type']
         except Exception as e:
+            print(e)
             print('Re starting ...')
             init()
             break
@@ -45,12 +46,7 @@ def init():
         del response['exchange_segment']
 
         try:
-            response_json = json.dumps(response)
-            raw_query = f"""
-            INSERT INTO "rawstuffs" (date, type, raw_data) 
-            VALUES (NOW(), 1, '{response_json}')
-            """
-            injectQuery(raw_query)
+            insertFullData(response)
         except Exception as e:
             print(e)
 
@@ -421,4 +417,68 @@ def syncNiftyIndex():
     with open(file_path, 'w') as json_file:
         json.dump(targetData, json_file, indent=4)
 
-# syncNiftyIndex()
+def insertFullData(raw_response):
+    market_depth = raw_response['depth']
+    current_buy_q = 0
+    current_sell_q = 0
+    for el in market_depth:
+        current_buy_q += el['bid_quantity']
+        current_sell_q += el['ask_quantity']
+    current_buy_dominance = 0
+    if ((current_buy_q + current_sell_q) != 0):
+        current_buy_dominance = round((current_buy_q * 100) / (current_buy_q  + current_sell_q), 2)
+    total_buy_dominance = 0
+    if ((raw_response['total_buy_quantity'] + raw_response['total_sell_quantity']) != 0):
+        total_buy_dominance = round((raw_response['total_buy_quantity'] * 100) / (raw_response['total_buy_quantity']  + raw_response['total_sell_quantity']), 2)
+    
+    md5_hash = hashlib.md5()
+    md5_hash.update(json.dumps(raw_response).encode('utf-8'))
+    datetime_obj = datetime.strptime(raw_response['LTT'], "%H:%M:%S").replace(
+    year=datetime.today().year,
+    month=datetime.today().month,
+    day=datetime.today().day)
+    datetime_obj = datetime_obj.replace(tzinfo=timezone.utc)
+    iso_with_tz = datetime_obj.isoformat()
+
+    creation_data = {
+        "id": md5_hash.hexdigest(),
+        "sec_id": raw_response['security_id'],
+        "trading_time": iso_with_tz,
+        "current_value": float(raw_response['LTP']),
+        "avg_value": float(raw_response['volume']),
+        "high": float(raw_response['high']),
+        "open": float(raw_response['open']),
+        "low": float(raw_response['low']),
+        "close": float(raw_response['close']),
+        "current_buy_dominance": current_buy_dominance,
+        "current_buy_q": current_buy_q,
+        "current_sell_q": current_sell_q,
+        "total_buy_dominance": total_buy_dominance,
+        "total_buy_q": raw_response['total_buy_quantity'],
+        "total_sell_q": raw_response['total_sell_quantity'],
+        "volume": raw_response['volume'],
+        "current_oi": raw_response['OI'],
+        "oi_day_low": raw_response['oi_day_low'],
+        "oi_day_high": raw_response['oi_day_high']
+    }
+    columns_to_insert = []
+    values_to_insert = []
+
+    for key, value in creation_data.items():
+        columns_to_insert.append(f'"{key}"')  # Quote column names to avoid SQL syntax issues
+        # Format values, adding single quotes around strings
+        if isinstance(value, str):
+            values_to_insert.append(f"'{value}'")
+        else:
+            values_to_insert.append(str(value))
+
+    # Join columns and values with commas
+    columns_str = ', '.join(columns_to_insert)
+    values_str = ', '.join(values_to_insert)
+
+    # Construct the raw query
+    raw_query = f"""
+        INSERT INTO "FullData" ({columns_str})
+        VALUES ({values_str})
+    """
+    injectQuery(raw_query)
