@@ -16,10 +16,19 @@ pip3 install sqlalchemy
 ```
 
 ```
-CREATE TABLE RawStuffs (
-    date TIMESTAMPTZ NOT NULL,
-    type SMALLINT NOT NULL,
-    raw_data JSONB NOT NULL
+CREATE TABLE "FullData" (
+    "id" VARCHAR(32) PRIMARY KEY, "sec_id" INTEGER,
+	"trading_time" TIMESTAMPTZ,
+	"current_value" DOUBLE PRECISION,
+	"avg_value" DOUBLE PRECISION,
+	"low" DOUBLE PRECISION, "high" DOUBLE PRECISION,
+	"open" DOUBLE PRECISION, "close" DOUBLE PRECISION,
+	"current_buy_q" INTEGER, "current_sell_q" INTEGER,
+	"current_buy_dominance" DOUBLE PRECISION,
+	"total_buy_q" INTEGER, "total_sell_q" INTEGER,
+	"total_buy_dominance" DOUBLE PRECISION,
+	"volume" INTEGER, "current_oi" INTEGER,
+	"oi_day_low" INTEGER, "oi_day_high" INTEGER
 );
 ```
 

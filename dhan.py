@@ -2,13 +2,15 @@
 import os
 import re
 import json
+import hashlib
 import datetime
 import requests # type: ignore
 from database import injectQuery
 from database import insertRecord
-from datetime import datetime, timedelta
 from dotenv import load_dotenv # type: ignore
+from datetime import datetime, timedelta, timezone
 from dhanhq import dhanhq, marketfeed # type: ignore
+from custom_socket.monitoring import syncTargetIndex # type: ignore
 from utils.file_service import xlsx_to_list_of_dicts, appendToDictList, list_of_dicts_to_xlsx
 
 # Load .env file
@@ -26,85 +28,30 @@ current_date = datetime.now().strftime("%Y-%m-%d")
 dhanClient = dhanhq(DHAN_CLIENT_CODE,DHAN_AUTH_TOKEN)
 
 def init():
-    instruments = getNiftyIndexes()
-
+    syncIndexes()
+    instruments = getIndexes()
     data = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, "v2")
+
     while True:
-        data.run_forever()
-        response = data.get_data()
-        response_type = response['type']
+        try:
+            data.run_forever()
+            response = data.get_data()
+            response_type = response['type']
+        except Exception as e:
+            print(e)
+            print('Re starting ...')
+            init()
+            break
+
         if (response_type != 'Full Data'): continue
         del response['type']
         del response['exchange_segment']
 
-        try:
-            response_json = json.dumps(response)
-            raw_query = f"""
-            INSERT INTO "rawstuffs" (date, type, raw_data) 
-            VALUES (NOW(), 1, '{response_json}')
-            """
-            injectQuery(raw_query)
-        except Exception as e:
-            print('Re starting ...')
-            init()
-            print(e)
+        insertFullData(response)
 
-async def on_connect(_):
-    print("Connected to websocket")
-
-async def on_message(_, message):
-    try:
-        print(message)
-        # Default assign -> Cached data
-        security_id = message['security_id']
-        if str(security_id) not in cached_data:
-            cached_data[str(security_id)] = {"open_price": 0, "risk": 100}
-
-        target_data = cached_data[str(security_id)]
-        if (target_data['open_price'] == 0 and message['type'] == 'Previous Close'):
-            target_data['open_price'] = float(message['prev_close'])
-
-        if 'LTT' not in message:
-            if message['type'] == 'OI Data':
-                message['LTT'] = datetime.now().strftime("%H:%M:%S")
-            else: return
-        if 'last_sync_time' not in cached_data[str(security_id)]:
-            cached_data[str(security_id)]['last_sync_time'] = '09:15:00'
-        diff_in_seconds = time_difference_in_seconds(cached_data[str(security_id)]['last_sync_time'], message['LTT'])
-        if (diff_in_seconds < 5):
-            return {} 
-        cached_data[str(security_id)]['last_sync_time'] = message['LTT']
-            
-        # Read existing data from the file if it exists
-        file_path = None
-        if message['type'] == 'Quote Data':
-            file_path = f"store/quote_data/{current_date}_{message['security_id']}" 
-        elif message['type'] == 'OI Data':
-            file_path = f"store/oi_data/{current_date}_{message['security_id']}" 
-        else: file_path = f"store/ticker_data/nifty_50_{message['security_id']}_{current_date}" 
-
-        if os.path.exists(file_path):
-            with open(file_path, 'r') as file:
-                try:
-                    existing_data = json.load(file)
-                except json.JSONDecodeError:
-                    existing_data = []
-        else: existing_data = []
-        existing_data.append(message)
-        with open(file_path, 'w') as file:
-            json.dump(existing_data, file, indent=4)
-
-        # isBullish(file_path)
-        # result = isMidCapBullish(file_path)
-        # print(result)
-
-    except Exception as e:
-        print('ERROR')
-        print(e)
-
-def getNiftyIndexes():
+def getIndexes():
     finalizedList = []
-    with open('store/nifty_index.json', 'r') as file:
+    with open('store/indexes.json', 'r') as file:
         companyData = json.load(file)
         for key in companyData:
             value = companyData[key]
@@ -388,32 +335,93 @@ def cal():
 
         print(positiveRallyCount)
 
-def syncNiftyIndex():
-    body = { "Data": { "Seg": 0, "Sid": 13, "Exp": 1415385000 } } # 07 Nov 2024
-    headers = { "origin": "https://web.dhan.co", "referer": "https://web.dhan.co/" }
-    apiResponse = requests.post(DHAN_CHAIN_URL, headers=headers, data=json.dumps(body))
-    responseData = apiResponse.json()['data']
-    current_ltp = responseData['sltp']
-    opData = responseData['oc']
+def syncIndexes():
+    nifty_50_data = syncTargetIndex(1415385000, 13) # 07 NOV 24
+    nifty_bank_data = syncTargetIndex(1415298600, 25) # 06 NOV 24
+    finnifty_data = syncTargetIndex(1415817000, 27) # 12 NOV 24
 
-    targetData = {}
-    index = 0
-    for key in opData:
-        premium_value = float(key)
-        diff_value = abs(premium_value - current_ltp)
-        if (diff_value <= 800):
-            ce_data = opData[key]['ce']
-            ce_sid = ce_data['sid']
-            targetData[ce_sid] = { "index": index, "name": ce_data['sym'], "segment": 2 }
-            index = index + 1
+    # Merge all derivatives
+    finalizedData = {}
+    for key in nifty_50_data:
+        finalizedData[key] = nifty_50_data[key]
+    for key in nifty_bank_data:
+        finalizedData[key] = nifty_bank_data[key]
+    for key in finnifty_data:
+        finalizedData[key] = finnifty_data[key]
 
-            pe_data = opData[key]['pe']
-            pe_sid = pe_data['sid']
-            targetData[pe_sid] = { "index": index, "name": pe_data['sym'], "segment": 2 }
-            index = index + 1
 
-    file_path = f"store/nifty_index.json" 
+    file_path = f"store/indexes.json" 
     with open(file_path, 'w') as json_file:
-        json.dump(targetData, json_file, indent=4)
+        json.dump(finalizedData, json_file, indent=4)
 
-syncNiftyIndex()
+def insertFullData(raw_response):
+    market_depth = raw_response['depth']
+    current_buy_q = 0
+    current_sell_q = 0
+    for el in market_depth:
+        current_buy_q += el['bid_quantity']
+        current_sell_q += el['ask_quantity']
+    current_buy_dominance = 0
+    if ((current_buy_q + current_sell_q) != 0):
+        current_buy_dominance = round((current_buy_q * 100) / (current_buy_q  + current_sell_q), 2)
+    total_buy_dominance = 0
+    if ((raw_response['total_buy_quantity'] + raw_response['total_sell_quantity']) != 0):
+        total_buy_dominance = round((raw_response['total_buy_quantity'] * 100) / (raw_response['total_buy_quantity']  + raw_response['total_sell_quantity']), 2)
+    
+    md5_hash = hashlib.md5()
+    md5_hash.update(json.dumps(raw_response).encode('utf-8'))
+    datetime_obj = datetime.strptime(raw_response['LTT'], "%H:%M:%S").replace(
+    year=datetime.today().year,
+    month=datetime.today().month,
+    day=datetime.today().day)
+    datetime_obj = datetime_obj.replace(tzinfo=timezone.utc)
+    iso_with_tz = datetime_obj.isoformat()
+
+    creation_data = {
+        "id": md5_hash.hexdigest(),
+        "sec_id": raw_response['security_id'],
+        "trading_time": iso_with_tz,
+        "current_value": float(raw_response['LTP']),
+        "avg_value": float(raw_response['volume']),
+        "high": float(raw_response['high']),
+        "open": float(raw_response['open']),
+        "low": float(raw_response['low']),
+        "close": float(raw_response['close']),
+        "current_buy_dominance": current_buy_dominance,
+        "current_buy_q": current_buy_q,
+        "current_sell_q": current_sell_q,
+        "total_buy_dominance": total_buy_dominance,
+        "total_buy_q": raw_response['total_buy_quantity'],
+        "total_sell_q": raw_response['total_sell_quantity'],
+        "volume": raw_response['volume'],
+        "current_oi": raw_response['OI'],
+        "oi_day_low": raw_response['oi_day_low'],
+        "oi_day_high": raw_response['oi_day_high']
+    }
+    columns_to_insert = []
+    values_to_insert = []
+
+    for key, value in creation_data.items():
+        columns_to_insert.append(f'"{key}"')  # Quote column names to avoid SQL syntax issues
+        # Format values, adding single quotes around strings
+        if isinstance(value, str):
+            values_to_insert.append(f"'{value}'")
+        else:
+            values_to_insert.append(str(value))
+
+    # Join columns and values with commas
+    columns_str = ', '.join(columns_to_insert)
+    values_str = ', '.join(values_to_insert)
+
+    # Construct the raw query
+    raw_query = f"""
+        INSERT INTO "FullData" ({columns_str})
+        VALUES ({values_str})
+    """
+    try:
+        injectQuery(raw_query)
+    except Exception as e:
+        if "unique constraint" in str(e):
+            pass
+        else: print(e)
+

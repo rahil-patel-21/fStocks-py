@@ -49,8 +49,7 @@ def init_database():
 def injectQuery(query: str):
     global db_engine  # Ensure you use the global db_engine
     if db_engine is None:
-        print("Database engine is not initialized.")
-        return
+        init_database()
 
     # Create a new session
     Session = sessionmaker(bind=db_engine)
