@@ -29,10 +29,17 @@ def init():
     instruments = getNiftyIndexes()
 
     data = marketfeed.DhanFeed(DHAN_CLIENT_CODE, DHAN_AUTH_TOKEN, instruments, "v2")
+
     while True:
-        data.run_forever()
-        response = data.get_data()
-        response_type = response['type']
+        try:
+            data.run_forever()
+            response = data.get_data()
+            response_type = response['type']
+        except Exception as e:
+            print('Re starting ...')
+            init()
+            break
+
         if (response_type != 'Full Data'): continue
         del response['type']
         del response['exchange_segment']
@@ -45,8 +52,6 @@ def init():
             """
             injectQuery(raw_query)
         except Exception as e:
-            print('Re starting ...')
-            init()
             print(e)
 
 async def on_connect(_):
@@ -416,4 +421,4 @@ def syncNiftyIndex():
     with open(file_path, 'w') as json_file:
         json.dump(targetData, json_file, indent=4)
 
-syncNiftyIndex()
+# syncNiftyIndex()
